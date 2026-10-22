@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Velvet Market</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #faf7f2; color: #292321; font: 16px/1.5 system-ui, sans-serif; }
+    header, main, footer { max-width: 1100px; margin: auto; padding: 20px; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    .brand { font: bold 26px Georgia, serif; color: #9a4054; }
+    a { color: inherit; }
+    .hero { padding: 45px 28px; border-radius: 18px; background: #704d4e; color: white; }
+    .hero h1 { font: 42px Georgia, serif; margin: 0 0 10px; }
+    .feed { margin: 20px 0; color: #79505a; min-height: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+    .card { background: white; border: 1px solid #eee5dc; border-radius: 12px; overflow: hidden; }
+    .card img { width: 100%; height: 220px; object-fit: cover; background: #e7d9d1; }
+    .info { padding: 14px; }
+    .price { color: #963e53; font-weight: 700; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; background: #9a4054; color: white; cursor: pointer; }
+    .note { color: #746d68; font-size: 13px; }
+    footer { color: #746d68; font-size: 13px; }
+    #age { position: fixed; inset: 0; display: grid; place-items: center; background: #171311dd; padding: 20px; }
+    #age section { max-width: 400px; background: white; padding: 26px; border-radius: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">Velvet Market</a>
+    <a href="/admin.html">管理后台</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>独立 · 私密 · 有边界</h1>
+      <p>成人精选市集。请遵守所在地法律和平台规则。</p>
+    </section>
+
+    <div class="feed" id="feed">购买动态只展示已确认的真实订单。</div>
+    <h2>精选商品</h2>
+    <div class="grid" id="products">正在加载商品…</div>
+    <p class="note">结账功能尚未配置。请勿通过本页面提交银行卡信息或钱包授权。</p>
+  </main>
+
+  <footer>仅限成年人访问 · 商品需经后台审核后展示</footer>
+
+  <div id="age">
+    <section>
+      <h2>年龄确认</h2>
+      <p>本网站仅面向已达到所在地法定成年年龄的访客。</p>
+      <button id="yes">我已成年，继续</button>
+      <button id="no" style="background:#777">离开</button>
+      <p class="note">此弹窗仅为提示，不构成可靠的年龄验证。</p>
+    </section>
+  </div>
+
+  <script>
+    const age = document.querySelector("#age");
+    if (sessionStorage.getItem("adult") === "yes") age.hidden = true;
+    document.querySelector("#yes").onclick = () => {
+      sessionStorage.setItem("adult", "yes");
+      age.hidden = true;
+    };
+    document.querySelector("#no").onclick = () => location.replace("about:blank");
+
+    async function loadProducts() {
+      const box = document.querySelector("#products");
+      try {
+        const response = await fetch("/api/products");
+        const data = await response.json();
+        if (!data.products?.length) {
+          box.textContent = "暂时没有已审核商品。";
+          return;
+        }
+
+        box.innerHTML = data.products.map(product => `
+          <article class="card">
+            <img src="${escapeAttr(product.image_url || "")}" alt="">
+            <div class="info">
+              <h3>${escapeHtml(product.title)}</h3>
+              <p>${escapeHtml(product.description || "")}</p>
+              <p>${escapeHtml(product.category)}</p>
+              <div class="price">${(product.price_cents / 100).toFixed(2)} ${escapeHtml(product.currency)}</div>
+              <button disabled title="支付功能尚未接入">暂不可结账</button>
+            </div>
+          </article>
+        `).join("");
+      } catch {
+        box.textContent = "加载失败，请稍后重试。";
+      }
+    }
+
+    async function loadFeed() {
+      try {
+        const response = await fetch("/api/recent-purchases");
+        const data = await response.json();
+        if (data.purchases?.length) {
+          document.querySelector("#feed").textContent =
+            "最近动态：" + data.purchases.map(x => x.text).join("　·　");
+        }
+      } catch {}
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+      );
+    }
+    function escapeAttr(value) { return escapeHtml(value); }
+
+    loadProducts();
+    loadFeed();
+  </script>
+</body>
+</html>
