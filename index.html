@@ -6,24 +6,82 @@
   <title>Velvet Market</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; background: #faf7f2; color: #292321; font: 16px/1.5 system-ui, sans-serif; }
-    header, main, footer { max-width: 1100px; margin: auto; padding: 20px; }
-    header { display: flex; justify-content: space-between; align-items: center; }
-    .brand { font: bold 26px Georgia, serif; color: #9a4054; }
+    body {
+      margin: 0;
+      background: #faf7f2;
+      color: #292321;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+    header, main, footer {
+      max-width: 1100px;
+      margin: auto;
+      padding: 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
     a { color: inherit; }
-    .hero { padding: 45px 28px; border-radius: 18px; background: #704d4e; color: white; }
+    .brand {
+      font: bold 26px Georgia, serif;
+      color: #9a4054;
+    }
+    .hero {
+      padding: 45px 28px;
+      border-radius: 18px;
+      background: #704d4e;
+      color: white;
+    }
     .hero h1 { font: 42px Georgia, serif; margin: 0 0 10px; }
-    .feed { margin: 20px 0; color: #79505a; min-height: 24px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
-    .card { background: white; border: 1px solid #eee5dc; border-radius: 12px; overflow: hidden; }
-    .card img { width: 100%; height: 220px; object-fit: cover; background: #e7d9d1; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: white;
+      border: 1px solid #eee5dc;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      background: #e7d9d1;
+    }
     .info { padding: 14px; }
     .price { color: #963e53; font-weight: 700; }
-    button { border: 0; border-radius: 8px; padding: 10px 14px; background: #9a4054; color: white; cursor: pointer; }
-    .note { color: #746d68; font-size: 13px; }
-    footer { color: #746d68; font-size: 13px; }
-    #age { position: fixed; inset: 0; display: grid; place-items: center; background: #171311dd; padding: 20px; }
-    #age section { max-width: 400px; background: white; padding: 26px; border-radius: 14px; text-align: center; }
+    .note, footer { color: #746d68; font-size: 13px; }
+    #feed { margin: 20px 0; color: #79505a; min-height: 24px; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: #9a4054;
+      color: white;
+      cursor: pointer;
+    }
+    #age {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: #171311dd;
+      padding: 20px;
+      z-index: 10;
+    }
+    /* 关键修复：确保 hidden 真正隐藏弹窗 */
+    #age[hidden] { display: none !important; }
+    #age section {
+      max-width: 400px;
+      background: white;
+      color: #292321;
+      padding: 26px;
+      border-radius: 14px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -38,15 +96,17 @@
       <p>成人精选市集。请遵守所在地法律和平台规则。</p>
     </section>
 
-    <div class="feed" id="feed">购买动态只展示已确认的真实订单。</div>
+    <div id="feed">购买动态只显示已确认的真实订单。</div>
     <h2>精选商品</h2>
-    <div class="grid" id="products">正在加载商品…</div>
-    <p class="note">结账功能尚未配置。请勿通过本页面提交银行卡信息或钱包授权。</p>
+    <div class="grid" id="products">正在加载商品……</div>
+    <p class="note">
+      支付功能尚未配置。不要在此页面输入银行卡信息或连接钱包。
+    </p>
   </main>
 
   <footer>仅限成年人访问 · 商品需经后台审核后展示</footer>
 
-  <div id="age">
+  <div id="age" role="dialog" aria-modal="true">
     <section>
       <h2>年龄确认</h2>
       <p>本网站仅面向已达到所在地法定成年年龄的访客。</p>
@@ -57,58 +117,78 @@
   </div>
 
   <script>
+    // 替换成你的 Worker 实际地址，不要在地址末尾加斜杠
+    const API_BASE = "https://astys.bond.workers.dev";
+
     const age = document.querySelector("#age");
-    if (sessionStorage.getItem("adult") === "yes") age.hidden = true;
-    document.querySelector("#yes").onclick = () => {
+    if (sessionStorage.getItem("adult") === "yes") {
+      age.hidden = true;
+    }
+
+    document.querySelector("#yes").addEventListener("click", () => {
       sessionStorage.setItem("adult", "yes");
       age.hidden = true;
-    };
-    document.querySelector("#no").onclick = () => location.replace("about:blank");
+    });
+
+    document.querySelector("#no").addEventListener("click", () => {
+      document.body.innerHTML =
+        "<main><h1>无法访问</h1><p>本网站仅面向成年人。</p></main>";
+    });
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;",
+        '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
 
     async function loadProducts() {
       const box = document.querySelector("#products");
+
       try {
-        const response = await fetch("/api/products");
+        const response = await fetch(`${API_BASE}/api/products`);
         const data = await response.json();
-        if (!data.products?.length) {
-          box.textContent = "暂时没有已审核商品。";
+
+        if (!response.ok) throw new Error(data.error || "请求失败");
+
+        if (!data.products || data.products.length === 0) {
+          box.textContent = "暂无已审核商品。请先到后台添加并审核商品。";
           return;
         }
 
         box.innerHTML = data.products.map(product => `
           <article class="card">
-            <img src="${escapeAttr(product.image_url || "")}" alt="">
+            <img src="${escapeHtml(product.image_url || "")}" alt="">
             <div class="info">
               <h3>${escapeHtml(product.title)}</h3>
               <p>${escapeHtml(product.description || "")}</p>
               <p>${escapeHtml(product.category)}</p>
-              <div class="price">${(product.price_cents / 100).toFixed(2)} ${escapeHtml(product.currency)}</div>
-              <button disabled title="支付功能尚未接入">暂不可结账</button>
+              <div class="price">
+                ${(product.price_cents / 100).toFixed(2)}
+                ${escapeHtml(product.currency)}
+              </div>
+              <p class="note">结账功能尚未配置</p>
             </div>
           </article>
         `).join("");
-      } catch {
-        box.textContent = "加载失败，请稍后重试。";
+      } catch (error) {
+        box.textContent = `商品加载失败：${error.message}`;
       }
     }
 
     async function loadFeed() {
       try {
-        const response = await fetch("/api/recent-purchases");
+        const response = await fetch(`${API_BASE}/api/recent-purchases`);
         const data = await response.json();
-        if (data.purchases?.length) {
-          document.querySelector("#feed").textContent =
-            "最近动态：" + data.purchases.map(x => x.text).join("　·　");
-        }
-      } catch {}
-    }
 
-    function escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, c =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
+        if (response.ok && data.purchases?.length) {
+          document.querySelector("#feed").textContent =
+            "最近动态：" + data.purchases.map(item => item.text).join(" · ");
+        }
+      } catch {
+        // 动态栏不可用时不影响商品展示
+      }
     }
-    function escapeAttr(value) { return escapeHtml(value); }
 
     loadProducts();
     loadFeed();
