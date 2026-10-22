@@ -3,32 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>商品管理</title>
+  <title>Velvet Market 管理后台</title>
   <style>
-    body { max-width: 900px; margin: 30px auto; padding: 0 16px; font: 15px system-ui, sans-serif; color: #292321; }
-    input, textarea, select { display: block; width: 100%; margin: 8px 0 14px; padding: 10px; }
+    body {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 16px;
+      font: 15px system-ui, sans-serif;
+      color: #292321;
+    }
+    input, textarea {
+      display: block;
+      width: 100%;
+      margin: 8px 0 14px;
+      padding: 10px;
+    }
     button { margin: 4px; padding: 8px 12px; cursor: pointer; }
     .row { border: 1px solid #ddd; padding: 14px; margin: 10px 0; border-radius: 8px; }
     .muted { color: #666; font-size: 13px; }
   </style>
 </head>
 <body>
-  <p><a href="/">← 返回商店</a></p>
+  <p><a href="/">← 返回首页</a></p>
   <h1>商品管理</h1>
 
   <label>管理员密钥</label>
   <input id="token" type="password" autocomplete="current-password">
   <button id="load">登录并加载商品</button>
-  <p class="muted">密钥应通过 Cloudflare Secret 设置，不要写入源码或提交到 GitHub。</p>
+  <p class="muted">不要把管理员密钥放进 GitHub 源码。</p>
 
   <h2>添加商品</h2>
   <form id="form">
-    <label>商品名称</label><input name="title" required maxlength="120">
-    <label>分类</label><input name="category" value="衣物">
-    <label>价格（美元分，例如 12.99 填 1299）</label><input name="price_cents" type="number" min="0" required>
-    <label>图片 HTTPS 地址（可留空）</label><input name="image_url" type="url">
-    <label>描述</label><textarea name="description" maxlength="2000"></textarea>
-    <button>提交审核</button>
+    <label>商品名称</label>
+    <input name="title" required maxlength="120">
+
+    <label>分类</label>
+    <input name="category" value="衣物">
+
+    <label>价格（美元分，例如 12.99 填 1299）</label>
+    <input name="price_cents" type="number" min="0" required>
+
+    <label>图片 HTTPS 地址，可留空</label>
+    <input name="image_url" type="url">
+
+    <label>商品描述</label>
+    <textarea name="description" maxlength="2000"></textarea>
+
+    <button type="submit">提交审核</button>
   </form>
 
   <h2>商品列表</h2>
@@ -36,34 +57,70 @@
   <p id="message"></p>
 
   <script>
+    // 替换成你的 Worker 实际地址，不要在地址末尾加斜杠
+    const API_BASE = "astys.bond/admin.html";
+
     const tokenInput = document.querySelector("#token");
     const message = document.querySelector("#message");
+
     tokenInput.value = sessionStorage.getItem("adminToken") || "";
 
     async function api(path, options = {}) {
       const headers = new Headers(options.headers || {});
-      headers.set("Authorization", "Bearer " + tokenInput.value);
-      if (options.body) headers.set("Content-Type", "application/json");
-      const response = await fetch("/api/" + path, { ...options, headers });
+      headers.set("Authorization", `Bearer ${tokenInput.value}`);
+
+      if (options.body) {
+        headers.set("Content-Type", "application/json");
+      }
+
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers
+      });
+
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "请求失败");
+
+      if (!response.ok) {
+        throw new Error(data.error || `请求失败：${response.status}`);
+      }
+
       return data;
     }
 
-    async function load() {
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;",
+        '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    async function loadProducts() {
       sessionStorage.setItem("adminToken", tokenInput.value);
+
       try {
-        const data = await api("admin/products");
-        document.querySelector("#list").innerHTML = data.products.map(p => `
+        const data = await api("/api/admin/products");
+        const list = document.querySelector("#list");
+
+        if (!data.products.length) {
+          list.textContent = "暂无商品";
+          return;
+        }
+
+        list.innerHTML = data.products.map(product => `
           <div class="row">
-            <strong>${esc(p.title)}</strong> — ${esc(p.category)}
-            <p>价格：${(p.price_cents / 100).toFixed(2)} ${esc(p.currency)}
-              · 状态：${esc(p.status)}</p>
-            <button onclick="setStatus('${p.id}','approved')">通过</button>
-            <button onclick="setStatus('${p.id}','rejected')">拒绝</button>
-            <button onclick="removeProduct('${p.id}')">删除</button>
+            <strong>${escapeHtml(product.title)}</strong>
+            — ${escapeHtml(product.category)}
+            <p>
+              ${(product.price_cents / 100).toFixed(2)}
+              ${escapeHtml(product.currency)}
+              · 状态：${escapeHtml(product.status)}
+            </p>
+            <button onclick="setStatus('${product.id}', 'approved')">通过</button>
+            <button onclick="setStatus('${product.id}', 'rejected')">拒绝</button>
+            <button onclick="removeProduct('${product.id}')">删除</button>
           </div>
-        `).join("") || "暂无商品";
+        `).join("");
+
         message.textContent = "";
       } catch (error) {
         message.textContent = error.message;
@@ -72,40 +129,51 @@
 
     window.setStatus = async (id, status) => {
       try {
-        await api(`admin/products/${id}/status`, {
-          method: "PATCH", body: JSON.stringify({ status })
+        await api(`/api/admin/products/${id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ status })
         });
-        await load();
-      } catch (error) { message.textContent = error.message; }
+        await loadProducts();
+      } catch (error) {
+        message.textContent = error.message;
+      }
     };
 
     window.removeProduct = async id => {
-      if (!confirm("确定删除商品？")) return;
+      if (!confirm("确定删除这个商品吗？")) return;
+
       try {
-        await api(`admin/products/${id}`, { method: "DELETE" });
-        await load();
-      } catch (error) { message.textContent = error.message; }
+        await api(`/api/admin/products/${id}`, {
+          method: "DELETE"
+        });
+        await loadProducts();
+      } catch (error) {
+        message.textContent = error.message;
+      }
     };
 
-    document.querySelector("#load").onclick = load;
-    document.querySelector("#form").onsubmit = async event => {
+    document.querySelector("#load").addEventListener("click", loadProducts);
+
+    document.querySelector("#form").addEventListener("submit", async event => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const body = Object.fromEntries(form.entries());
-      body.price_cents = Number(body.price_cents);
-      try {
-        await api("admin/products", { method: "POST", body: JSON.stringify(body) });
-        event.currentTarget.reset();
-        message.textContent = "商品已提交，审核通过后会显示在前台。";
-        await load();
-      } catch (error) { message.textContent = error.message; }
-    };
 
-    function esc(value) {
-      return String(value).replace(/[&<>"']/g, c =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-      );
-    }
+      const formData = new FormData(event.currentTarget);
+      const body = Object.fromEntries(formData.entries());
+      body.price_cents = Number(body.price_cents);
+
+      try {
+        await api("/api/admin/products", {
+          method: "POST",
+          body: JSON.stringify(body)
+        });
+
+        event.currentTarget.reset();
+        message.textContent = "商品已提交，审核通过后会显示在首页。";
+        await loadProducts();
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
   </script>
 </body>
 </html>
