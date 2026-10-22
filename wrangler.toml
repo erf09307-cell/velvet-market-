@@ -1,0 +1,8 @@
+name = "velvet-market"
+compatibility_date = "2026-10-22"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "velvet-market-db"
+database_id = "替换为你的D1数据库ID"
